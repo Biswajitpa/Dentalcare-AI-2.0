@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:00d2ff,100:3a7bd5&height=220&section=header&text=DentalCare%20AI%202.0&fontSize=45&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=AI-Powered%20Dental%20Disease%20Analysis,%20Doctor%20Appointments%20and%20Patient%20Management&descAlignY=55&descAlign=50"/>
+</p>
+
+
 # Dental Appointment Management System
 
 A conversational AI system for managing dental appointments, powered by LangGraph and Grok-4 (xAI). This project demonstrates a multi-agent architecture where specialized agents work together to handle different appointment-related tasks through natural language interactions.
