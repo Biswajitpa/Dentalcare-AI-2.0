@@ -17,14 +17,22 @@ A conversational AI-powered dental appointment management platform designed to s
 - 📊 Real-time appointment tracking and clinic workflow support
 - 🔒 Prevention of double-booking through schedule verification
 
-## Overview
+## 📋 Overview
 
-This system provides a chat-based interface for patients and clinic staff to:
-- **Check available appointment slots** and doctor information
-- **Book new appointments** with preferred doctors
-- **Cancel existing appointments**
-- **Reschedule appointments** to different time slots
+- This system provides a chat-based interface for patients and clinic staff to:
 
+- 📅 Check available appointment slots and doctor information
+- 👨‍⚕️ View doctor schedules, departments, and availability
+- 📝 Book new appointments with preferred doctors and time slots
+- ❌ Cancel existing appointments quickly through conversational commands
+- 🔄 Reschedule appointments to different dates or available time slots
+- 🔍 Verify appointment details using appointment IDs
+- ⏰ Prevent double-booking through real-time schedule validation
+- 🏥 Assign appointments based on doctor specialization and department
+- 📊 Manage clinic schedules using a structured CSV-based appointment database
+- 💬 Interact naturally with AI agents without navigating complex forms
+
+- The system leverages a multi-agent architecture powered by LangGraph and Grok-4 (xAI), where specialized agents collaborate to handle appointment booking, schedule management, availability checks, cancellations, and patient support. By combining conversational AI with automated scheduling logic, the platform reduces administrative workload, improves appointment accuracy, and delivers a seamless digital experience for both patients and dental clinic staff.
 The system uses a supervisor agent that intelligently routes user requests to the appropriate specialized agent based on the detected intent, making it an excellent educational example of multi-agent AI systems.
 
 ## Architecture
