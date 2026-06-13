@@ -5,7 +5,7 @@ langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-community
 langchain-ollama
-python-dotenv>=1.0.0
-pydantic>=2.0.0
+opencv-python-headless
 torch
 torchvision
+pydantic>=2.0.0
