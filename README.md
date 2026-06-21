@@ -265,6 +265,4 @@ Environment variables can be set in `.env`:
 | MODEL_NAME | LLM model to use | grok-4 |
 | TEMPERATURE | LLM creativity (0=deterministic) | 0 |
 
-## License
 
-This project is provided for educational purposes.
