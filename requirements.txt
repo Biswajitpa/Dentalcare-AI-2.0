@@ -10,3 +10,4 @@ torch
 torchvision
 pydantic>=2.0.0
 reportlab
+langchain-anthropic
