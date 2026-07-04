@@ -1,8 +1,7 @@
 import os
-from langchain_ollama import ChatOllama
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
 from langgraph.prebuilt import create_react_agent
-
 from dental_agent.config.settings import MODEL_NAME, TEMPERATURE
 from dental_agent.utils import sanitize_messages
 from dental_agent.tools.csv_reader import (
@@ -32,18 +31,22 @@ SYSTEM_PROMPT = """You are a helpful dental appointment assistant. You help pati
 2. Booking new appointments
 3. Cancelling existing appointments
 4. Rescheduling appointments
-
 Always use M/D/YYYY H:MM format — e.g. 5/10/2026 9:00.
 Always call check_slot_availability before booking to confirm the slot is free.
 """
+
 
 def _pre_model_hook(state: dict) -> dict:
     sanitized = sanitize_messages(state["messages"])
     return {"llm_input_messages": [SystemMessage(content=SYSTEM_PROMPT)] + sanitized}
 
-llm = ChatOllama(
+
+# ChatAnthropic reads the API key from the ANTHROPIC_API_KEY environment
+# variable automatically. On Streamlit Cloud, set this under
+# Settings -> Secrets as: ANTHROPIC_API_KEY = "sk-ant-..."
+llm = ChatAnthropic(
     model=MODEL_NAME,
-    temperature=TEMPERATURE
+    temperature=TEMPERATURE,
 )
 
 dental_graph = create_react_agent(model=llm, tools=TOOLS, pre_model_hook=_pre_model_hook)
