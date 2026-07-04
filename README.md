@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:00d2ff,100:3a7bd5&height=220&section=header&text=DentalCare%20AI%202.0&fontSize=45&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=AI-Powered%20Dental%20Disease%20Analysis,%20Doctor%20Appointments%20and%20Patient%20Management&descAlignY=55&descAlign=50"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f0f0f,100:1a2a4a&height=220&section=header&text=DentalCare%20AI%202.0&fontSize=45&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=AI-Powered%20Dental%20Disease%20Analysis,%20Doctor%20Appointments%20and%20Patient%20Management&descAlignY=55&descAlign=50"/>
 </p>
 
 ## 🦷 Dental Appointment Management System
@@ -289,7 +289,7 @@ Environment variables can be set in `.env`:
 ## 👤 Created & Maintained By
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Author-Biswajit%20Pattanaik-0d9488?style=for-the-badge&logo=github&logoColor=white" alt="Author Badge"/>
+  <img src="https://img.shields.io/badge/Author-Biswajit%20Pattanaik-0f0f0f?style=for-the-badge&logo=github&logoColor=white" alt="Author Badge"/>
 </p>
 
 <p align="center">
@@ -304,5 +304,5 @@ Environment variables can be set in `.env`:
 </p>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:3a7bd5,100:00d2ff&height=100&section=footer"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a2a4a,100:0f0f0f&height=100&section=footer"/>
 </p>
