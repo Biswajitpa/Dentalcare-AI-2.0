@@ -102,10 +102,6 @@ flowchart TD
 
 This section goes beyond the high-level architecture diagram above and describes how requests actually flow through the system, how state is shared between agents, and the design decisions behind them.
 
-<p align="center">
-  <img src="./dental_ai_system_architecture.svg" alt="DentalCare AI system architecture diagram" width="700"/>
-</p>
-
 ### 1. End-to-End Request Flow
 
 ```mermaid
