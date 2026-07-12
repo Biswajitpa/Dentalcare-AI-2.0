@@ -93,6 +93,124 @@ The system follows a supervisor pattern, where a central coordinator analyzes us
 | **Pandas** | Manages the CSV-based data storage |
 | **Pydantic** | Handles structured data validation |
 
+## 🏗️ System Design
+
+This section goes beyond the high-level architecture diagram above and describes how requests actually flow through the system, how state is shared between agents, and the design decisions behind them.
+
+### 1. End-to-End Request Flow
+
+```
+ User Input
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        main.py (CLI)                         │
+│  Reads user message → appends to conversation state          │
+└───────────────────────────────┬───────────────────────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    LangGraph Workflow (graph.py)              │
+│                                                                │
+│   ┌──────────────┐   intent    ┌──────────────────────────┐  │
+│   │  Supervisor  │────────────▶│  Conditional Edge Router  │  │
+│   │    Node      │             └──────────────┬────────────┘  │
+│   └──────────────┘                             │               │
+│                       ┌─────────────────────────┼───────────┐  │
+│                       ▼             ▼            ▼           ▼  │
+│                 ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌────┐│
+│                 │   Info   │ │ Booking  │ │Cancellation│ │Res-││
+│                 │  Agent   │ │  Agent   │ │   Agent    │ │ch. ││
+│                 └────┬─────┘ └────┬─────┘ └─────┬──────┘ └─┬──┘│
+│                      │            │             │          │   │
+│                      ▼            ▼             ▼          ▼   │
+│                 ┌──────────────────────────────────────────┐   │
+│                 │        Tool Layer (csv_reader/writer)     │   │
+│                 └────────────────────┬─────────────────────┘   │
+└──────────────────────────────────────┼─────────────────────────┘
+                                        ▼
+                        doctor_availability.csv (data store)
+                                        │
+                                        ▼
+                        Response formatted & returned to user
+```
+
+**Flow summary:**
+
+1. The CLI in `main.py` captures raw user text and appends it to the shared LangGraph state as a new message.
+2. The **Supervisor node** runs first on every turn. It performs structured-output intent classification (`get_info`, `book`, `cancel`, `reschedule`, `end`) and writes the decision back into state.
+3. A **conditional edge** inspects `state.next_agent` and routes execution to exactly one specialized agent node — agents never call each other directly, which keeps the graph a strict tree instead of a mesh.
+4. The selected agent may invoke one or more **tools** (read-only or mutating) to gather information or persist changes.
+5. The agent formats a natural-language response, which is appended to the message history and returned to the CLI for display.
+6. Control returns to the Supervisor for the next turn, so every message is independently re-classified rather than assuming the previous agent should keep handling the conversation.
+
+### 2. State Design
+
+LangGraph's shared state object is the backbone of the system. It is intentionally kept flat and serializable so it can later be persisted (e.g., to Redis or a database) with minimal changes:
+
+| State Field | Type | Purpose |
+|---|---|---|
+| `messages` | `list[BaseMessage]` | Full conversation history, used for LLM context |
+| `intent` | `str` | Last classified intent from the Supervisor |
+| `next_agent` | `str` | Routing target used by the conditional edge |
+| `reasoning` | `str` | Supervisor's explanation, useful for debugging/logging |
+| `collected_params` | `dict` | In-progress booking/reschedule fields (patient ID, doctor, date/time, specialization) collected across multiple turns |
+| `tool_results` | `list` | Raw outputs from the most recent tool calls |
+| `final_response` | `str` | The message ultimately shown to the user |
+
+Because `collected_params` persists across turns, agents can ask clarifying follow-up questions ("Which time slot works for you?") without losing previously supplied information — this is what allows multi-turn booking flows to feel conversational instead of form-like.
+
+### 3. Design Principles
+
+- **Single Responsibility per Agent** — Each agent owns exactly one capability (info, booking, cancellation, rescheduling). This keeps prompts small and focused, which improves classification and response accuracy compared to one large multi-purpose prompt.
+- **Least-Privilege Tool Access** — The Info Agent only has read tools (`csv_reader.py`); only Booking, Cancellation, and Rescheduling agents can access write tools (`csv_writer.py`). This mirrors production-grade access control and prevents an info query from accidentally mutating data.
+- **Validate Before Mutate** — Every write path (book/reschedule) first re-reads current availability before writing, closing the race condition where a slot could be booked twice between the time it was displayed and the time it was reserved.
+- **Idempotent-Friendly Tools** — Tool functions accept explicit identifiers (patient ID + date/time) rather than relying on implicit "last mentioned" context, so a repeated call produces the same, predictable result instead of silently duplicating an action.
+- **Separation of Orchestration and Data Access** — `workflows/graph.py` only knows about agents and routing; it has no knowledge of CSV structure. `tools/csv_reader.py` and `tools/csv_writer.py` are the only modules that touch `doctor_availability.csv`, so the storage format can change without touching the graph or agents.
+- **Stateless Model Calls, Stateful Graph** — Each call to Grok-4 is stateless; all continuity comes from the LangGraph state passed in as context. This makes the system easy to reason about, test with fixed inputs, and scale horizontally.
+
+### 4. Data Flow & Conflict Prevention
+
+```
+Booking Request
+     │
+     ▼
+[1] Parse requested date/time, doctor, specialization
+     │
+     ▼
+[2] csv_reader.check_availability(doctor, date_slot)
+     │
+     ├── is_available == False ──▶ Reject & suggest alternatives
+     │
+     ▼ is_available == True
+[3] csv_writer.book_appointment(patient_id, doctor, date_slot)
+     │      → sets is_available = False
+     │      → sets patient_to_attend = patient_id
+     ▼
+[4] Persist to doctor_availability.csv
+     ▼
+[5] Return confirmation to user
+```
+
+The same check-then-write pattern is reused for rescheduling (release old slot → validate new slot → reserve new slot) and is what guarantees the "conflict-safe scheduling" and "no double-booking" guarantees described in the Highlights section.
+
+### 5. Extensibility Points
+
+The system was designed with a few clear seams for growth:
+
+| Extension | Where to change |
+|---|---|
+| Swap the LLM provider | `dental_agent/config/settings.py` + the LLM client instantiation, since agents call a shared wrapper rather than the xAI SDK directly |
+| Replace CSV with a real database | Only `tools/csv_reader.py` and `tools/csv_writer.py` need new implementations; agent and graph code is storage-agnostic |
+| Add a new capability (e.g., billing) | Add a new agent module under `agents/`, register it as a graph node, and extend the Supervisor's intent enum |
+| Add persistence for state across sessions | `models/state.py` is already a flat, serializable schema, making it straightforward to checkpoint to a store such as Redis or Postgres |
+| Expose over an API instead of CLI | Replace `main.py` with a thin API layer (e.g., FastAPI) that feeds the same LangGraph workflow — no agent/tool changes required |
+
+### 6. Known Limitations (by design, for an educational reference)
+
+- CSV storage is not safe for concurrent writers; a production deployment should move to a transactional database.
+- There is no authentication/authorization layer; anyone using the CLI can act as any patient ID.
+- The Supervisor re-classifies intent every turn rather than maintaining a "current flow" concept, which is simple and robust but can occasionally re-ask for information mid-booking if a message is ambiguous.
+
 ## Project Structure
 
 ```
