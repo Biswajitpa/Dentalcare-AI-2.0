@@ -53,24 +53,29 @@ The system uses a supervisor agent that intelligently routes user requests to th
 
 The system follows a supervisor pattern, where a central coordinator analyzes user messages and routes them to the most appropriate specialized agent:
 
-```
-                    ┌──────────────┐
-                    │   Supervisor │ ← Intent classification & routing
-                    └──────┬───────┘
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-          ▼                ▼                ▼
-   ┌─────────────┐ ┌─────────────┐ ┌───────────────┐
-   │ Info Agent  │ │   Booking   │ │  Cancellation │
-   │             │ │    Agent    │ │    Agent      │
-   └─────────────┘ └─────────────┘ └───────────────┘
-          │
-          ▼
-   ┌───────────────┐
-   │   Reschedule  │
-   │    Agent      │
-   └───────────────┘
+```mermaid
+flowchart TD
+    U["👤 User / Clinic Staff"] --> S["🧭 Supervisor Agent<br/>Intent classification & routing"]
+
+    S -->|get_info| INFO["📖 Info Agent"]
+    S -->|book| BOOK["📝 Booking Agent"]
+    S -->|cancel| CANCEL["❌ Cancellation Agent"]
+    S -->|reschedule| RESCH["🔄 Rescheduling Agent"]
+    S -->|end| DONE(["Conversation End"])
+
+    INFO --> READ["csv_reader.py<br/>(read-only tools)"]
+    BOOK --> WRITE["csv_writer.py<br/>(mutating tools)"]
+    CANCEL --> WRITE
+    RESCH --> WRITE
+    RESCH --> READ
+
+    READ --> DB[("doctor_availability.csv")]
+    WRITE --> DB
+
+    BOOK -.response.-> S
+    CANCEL -.response.-> S
+    INFO -.response.-> S
+    RESCH -.response.-> S
 ```
 
 ### Agent Responsibilities
@@ -103,39 +108,31 @@ This section goes beyond the high-level architecture diagram above and describes
 
 ### 1. End-to-End Request Flow
 
-```
- User Input
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        main.py (CLI)                         │
-│  Reads user message → appends to conversation state          │
-└───────────────────────────────┬───────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    LangGraph Workflow (graph.py)              │
-│                                                                │
-│   ┌──────────────┐   intent    ┌──────────────────────────┐  │
-│   │  Supervisor  │────────────▶│  Conditional Edge Router  │  │
-│   │    Node      │             └──────────────┬────────────┘  │
-│   └──────────────┘                             │               │
-│                       ┌─────────────────────────┼───────────┐  │
-│                       ▼             ▼            ▼           ▼  │
-│                 ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌────┐│
-│                 │   Info   │ │ Booking  │ │Cancellation│ │Res-││
-│                 │  Agent   │ │  Agent   │ │   Agent    │ │ch. ││
-│                 └────┬─────┘ └────┬─────┘ └─────┬──────┘ └─┬──┘│
-│                      │            │             │          │   │
-│                      ▼            ▼             ▼          ▼   │
-│                 ┌──────────────────────────────────────────┐   │
-│                 │        Tool Layer (csv_reader/writer)     │   │
-│                 └────────────────────┬─────────────────────┘   │
-└──────────────────────────────────────┼─────────────────────────┘
-                                        ▼
-                        doctor_availability.csv (data store)
-                                        │
-                                        ▼
-                        Response formatted & returned to user
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI as main.py (CLI)
+    participant Graph as LangGraph Workflow
+    participant Sup as Supervisor Node
+    participant Agent as Specialized Agent
+    participant Tools as Tool Layer
+    participant CSV as doctor_availability.csv
+
+    User->>CLI: Natural language message
+    CLI->>Graph: Append message to shared state
+    Graph->>Sup: Run supervisor node
+    Sup->>Sup: Classify intent (get_info/book/cancel/reschedule/end)
+    Sup->>Graph: Set next_agent + reasoning
+    Graph->>Agent: Conditional edge routes to one agent
+    Agent->>Tools: Invoke read and/or write tools
+    Tools->>CSV: Read / validate / write
+    CSV-->>Tools: Result
+    Tools-->>Agent: Tool result
+    Agent->>Agent: Format natural-language response
+    Agent-->>Graph: Append final_response to state
+    Graph-->>CLI: Return response
+    CLI-->>User: Display reply
+    Note over Sup: Every new turn is re-classified<br/>by the Supervisor from scratch
 ```
 
 **Flow summary:**
@@ -174,25 +171,15 @@ Because `collected_params` persists across turns, agents can ask clarifying foll
 
 ### 4. Data Flow & Conflict Prevention
 
-```
-Booking Request
-     │
-     ▼
-[1] Parse requested date/time, doctor, specialization
-     │
-     ▼
-[2] csv_reader.check_availability(doctor, date_slot)
-     │
-     ├── is_available == False ──▶ Reject & suggest alternatives
-     │
-     ▼ is_available == True
-[3] csv_writer.book_appointment(patient_id, doctor, date_slot)
-     │      → sets is_available = False
-     │      → sets patient_to_attend = patient_id
-     ▼
-[4] Persist to doctor_availability.csv
-     ▼
-[5] Return confirmation to user
+```mermaid
+flowchart TD
+    A["Booking Request"] --> B["Parse requested date/time, doctor, specialization"]
+    B --> C{"csv_reader.check_availability(doctor, date_slot)"}
+    C -- "is_available == False" --> D["Reject & suggest alternatives"]
+    C -- "is_available == True" --> E["csv_writer.book_appointment(patient_id, doctor, date_slot)"]
+    E --> F["Set is_available = False<br/>Set patient_to_attend = patient_id"]
+    F --> G[("Persist to doctor_availability.csv")]
+    G --> H["Return confirmation to user"]
 ```
 
 The same check-then-write pattern is reused for rescheduling (release old slot → validate new slot → reserve new slot) and is what guarantees the "conflict-safe scheduling" and "no double-booking" guarantees described in the Highlights section.
@@ -214,6 +201,73 @@ The system was designed with a few clear seams for growth:
 - CSV storage is not safe for concurrent writers; a production deployment should move to a transactional database.
 - There is no authentication/authorization layer; anyone using the CLI can act as any patient ID.
 - The Supervisor re-classifies intent every turn rather than maintaining a "current flow" concept, which is simple and robust but can occasionally re-ask for information mid-booking if a message is ambiguous.
+
+## 🚀 Production Readiness Roadmap
+
+The current implementation is an intentionally lightweight, educational reference. The table and checklist below outline what would need to change to run this safely and reliably in a real clinic environment, ordered roughly by priority.
+
+```mermaid
+flowchart LR
+    subgraph Today["Current (Educational)"]
+        direction TB
+        T1["CLI entry point"]
+        T2["CSV file storage"]
+        T3["No auth"]
+        T4["Single process"]
+    end
+
+    subgraph Target["Production Target"]
+        direction TB
+        P1["FastAPI / gRPC service<br/>behind a load balancer"]
+        P2["Postgres + connection pool<br/>transactional writes"]
+        P3["OAuth2 / JWT auth<br/>role-based access"]
+        P4["Containerized, horizontally<br/>scaled, observable"]
+    end
+
+    T1 -->|"wrap graph in API layer"| P1
+    T2 -->|"migrate csv_reader/writer"| P2
+    T3 -->|"add identity provider"| P3
+    T4 -->|"Docker + orchestrator"| P4
+```
+
+### Priority Checklist
+
+| Priority | Area | What to do |
+|---|---|---|
+| 🔴 Critical | **Data layer** | Migrate `doctor_availability.csv` to a transactional database (Postgres/MySQL) with row-level locking or `SELECT ... FOR UPDATE` on the check-then-write path to fully close the race condition, not just narrow it |
+| 🔴 Critical | **Authentication & authorization** | Add an identity layer (OAuth2/JWT, e.g. via FastAPI + `fastapi-users` or an external IdP) so a patient can only act on their own appointments, and staff roles are scoped separately |
+| 🔴 Critical | **Secrets management** | Move `XAI_API_KEY` and any DB credentials out of `.env` files in production; use a secrets manager (AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager) |
+| 🟠 High | **API layer** | Replace the interactive CLI with a FastAPI (or gRPC) service exposing `/chat`, `/appointments`, `/doctors` endpoints, feeding the same LangGraph workflow |
+| 🟠 High | **Containerization** | Add a `Dockerfile` and `docker-compose.yml` (app + Postgres + reverse proxy) so the whole stack is reproducible and deployable |
+| 🟠 High | **Observability** | Structured logging (JSON logs), request tracing (OpenTelemetry), and metrics (Prometheus/Grafana) for agent latency, intent-classification accuracy, tool errors, and LLM token usage/cost |
+| 🟠 High | **Testing** | Unit tests for each tool function, integration tests for the LangGraph workflow with a fixture DB, and golden-response tests for the Supervisor's intent classification |
+| 🟡 Medium | **Rate limiting & abuse protection** | Per-user/API-key rate limits and input validation to guard against prompt injection or runaway tool loops |
+| 🟡 Medium | **CI/CD** | GitHub Actions (or similar) pipeline: lint → test → build image → deploy, with separate staging/production environments |
+| 🟡 Medium | **Session persistence** | Checkpoint LangGraph state to Redis or Postgres so multi-turn booking flows survive process restarts and can scale across multiple app instances |
+| 🟢 Nice-to-have | **Notifications** | SMS/email confirmations and reminders for bookings, cancellations, and reschedules (e.g. via Twilio/SendGrid) |
+| 🟢 Nice-to-have | **Audit trail** | Append-only log of every booking mutation (who, what, when) for compliance and dispute resolution |
+| 🟢 Nice-to-have | **Backup & disaster recovery** | Automated database backups and a documented recovery runbook |
+
+### Suggested Deployment Shape
+
+```mermaid
+flowchart TD
+    Client["Web / Mobile Client"] -->|HTTPS| LB["Load Balancer / Reverse Proxy"]
+    LB --> API1["App Instance 1<br/>(FastAPI + LangGraph)"]
+    LB --> API2["App Instance 2<br/>(FastAPI + LangGraph)"]
+    API1 --> Redis[("Redis<br/>session/state cache")]
+    API2 --> Redis
+    API1 --> PG[("Postgres<br/>appointments, doctors, patients")]
+    API2 --> PG
+    API1 --> LLM["Grok-4 (xAI) API"]
+    API2 --> LLM
+    API1 --> OTel["OpenTelemetry Collector"]
+    API2 --> OTel
+    OTel --> Grafana["Grafana / Prometheus dashboards"]
+    PG --> Backup["Automated backups"]
+```
+
+Because the current codebase already keeps orchestration (`workflows/graph.py`), data access (`tools/csv_reader.py` / `tools/csv_writer.py`), and configuration (`config/settings.py`) cleanly separated, most of the above changes are additive — the multi-agent logic itself does not need to be rewritten to reach this target state.
 
 ## Project Structure
 
