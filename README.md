@@ -461,12 +461,17 @@ Environment variables can be set in `.env`:
 ## 👤 Created & Maintained By
 
 <p align="center">
+  <img src="https://avatars.githubusercontent.com/u/179071155?v=4" width="150" style="border-radius: 50%;" alt="Biswajit Pattanaik"/>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Author-Biswajit%20Pattanaik-0f0f0f?style=for-the-badge&logo=github&logoColor=white" alt="Author Badge"/>
 </p>
 
 <p align="center">
   <b>Biswajit Pattanaik</b><br/>
-  <i>Building AI-powered agentic systems, one workflow at a time 🚀</i>
+  <i>Building AI-powered agentic systems, one workflow at a time 🚀</i><br/>
+  <a href="https://github.com/Biswajitpa">@Biswajitpa</a>
 </p>
 
 <p align="center">
